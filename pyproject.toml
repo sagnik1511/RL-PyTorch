@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "rl-env"
+version = "0.1.0"
+description = ""
+authors = ["Sagnik Roy <sagnik.jal00@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+ipykernel = "^6.29.2"
+matplotlib = "^3.8.3"
+gym = {extras = ["all"], version = "^0.26.2"}
+torch = "^2.2.1"
+
+[tool.poetry.group.dev.dependencies]
+gym = "^0.26.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
