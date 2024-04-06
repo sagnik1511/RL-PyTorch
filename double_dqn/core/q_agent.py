@@ -3,6 +3,7 @@ import random
 import numpy as np
 import torch.nn as nn
 from pathlib import Path
+import torch.nn.functional as F
 
 from double_dqn.misc.replay_buffer import ReplayBuffer
 from .q_network import DDQNetwork
@@ -40,19 +41,19 @@ class DDQNAgent:
         self.target_network = DDQNetwork(observation_size, action_space_size).to(
             self.device
         )
-        self.criterion = nn.MSELoss().to(self.device)
+        # self.criterion = nn.MSELoss().to(self.device)
         self.optimizer = torch.optim.Adam(
             self.online_network.parameters(), lr=learning_rate
         )
         self.chkpt_dir = Path(checkpoint_directory)
-        self.learning_counter = 0
+        self.iteration_counter = 0
 
     def _update_target_network(self):
         self.target_network.load_state_dict(self.online_network.state_dict())
 
     def get_action(self, state):
         # Updating epsilon (Epsilon Annealing)
-        self.eps = max(self.eps - self.eps_decay, self.eps_min)
+        self.eps = max(self.eps_min, self.eps - self.eps_decay)
 
         if random.random() < self.eps:
             # Choosing Random Exploratory Action
@@ -63,37 +64,39 @@ class DDQNAgent:
             state = (
                 torch.tensor(state, dtype=torch.float32).to(self.device).unsqueeze(0)
             )
+            self.online_network.eval()
             with torch.no_grad():
                 # Generating Agent Response
                 pred = self.online_network(state)
                 action = torch.argmax(pred).squeeze(0)
-
+            self.online_network.train()
             return action.item()
 
     def _update_q_values(self, states, actions, rewards, states_, dones):
 
         # Moving the data to corresponding device as torch.Tensor
         states = torch.tensor(states, dtype=torch.float32).to(self.device)
-        actions = torch.tensor(actions, dtype=torch.int32).to(self.device).unsqueeze(1)
+        actions = torch.tensor(actions, dtype=torch.long).to(self.device).unsqueeze(1)
         rewards = (
             torch.tensor(rewards, dtype=torch.float32).to(self.device).unsqueeze(1)
         )
         states_ = torch.tensor(states_, dtype=torch.float32).to(self.device)
-        dones = torch.tensor(dones, dtype=torch.int32).to(self.device).unsqueeze(1)
+        dones = torch.tensor(dones, dtype=torch.long).to(self.device).unsqueeze(1)
 
         # Predicting actions from online network
         predicted_actions = self.online_network(states)
-        q_values = predicted_actions.gather(1, actions.long())
+        q_values = predicted_actions.gather(1, actions)
 
-        with torch.no_grad():
-            next_state_predicted_actions = self.target_network(states_)
-            next_max_q_values = torch.max(next_state_predicted_actions, dim=1)[0]
+        next_state_predicted_actions = self.target_network(states_)
+        next_max_q_values = next_state_predicted_actions.detach().max(1)[0].unsqueeze(1)
 
-            # We'll only the q values from the states where the episode didn't terminated
-            next_q_values = rewards + self.gamma * next_max_q_values * (1 - dones)
+        # We'll only the q values from the states where the episode didn't terminated
+        next_q_values = rewards + self.gamma * next_max_q_values * (1 - dones)
 
         self.optimizer.zero_grad()
-        loss = self.criterion(q_values, next_q_values)
+        loss = F.mse_loss(
+            q_values, next_q_values
+        )  # self.criterion(q_values, next_q_values)
         loss.backward()
         self.optimizer.step()
 
@@ -111,16 +114,16 @@ class DDQNAgent:
         self.target_network.save_model(target_fpath)
 
     def train(self):
+        self.iteration_counter += 1
         if len(self.replay_buffer) < self.batch_size:
             # Not enough records to train the network
             return
         else:
             # Updating Target Network after a buffer time
             if (
-                self.learning_counter > 0
-                and self.learning_counter % self.replace_counter == 0
+                self.iteration_counter > 0
+                and self.iteration_counter % self.replace_counter == 0
             ):
                 self._update_target_network()
-            self.learning_counter += 1
             states, actions, rewards, states_, dones = self.replay_buffer.sample()
             self._update_q_values(states, actions, rewards, states_, dones)

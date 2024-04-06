@@ -12,15 +12,17 @@ class DDQNetwork(nn.Module):
 
     def _define_network(self):
         model = nn.Sequential(
-            nn.Linear(self.obs_n, 512),
-            nn.Linear(512, 512),
-            nn.Linear(512, self.out_n),
+            nn.Linear(self.obs_n, 128),
+            nn.ReLU(),
+            nn.Linear(128, 128),
+            nn.ReLU(),
+            nn.Linear(128, self.out_n),
         )
         return model
 
     def forward(self, state):
         l_op = self.net(state)
-        return torch.softmax(l_op, dim=1)
+        return l_op#torch.softmax(l_op, dim=1)
 
     def load_model(self, path):
         print(f"Loading model parameters from {path}")

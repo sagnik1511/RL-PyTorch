@@ -2,4 +2,11 @@
 .vscode/
 .DS_Store
 
+# Notebooks
 notebooks/
+
+# artifacts
+runs/*
+
+# cache files
+*.pyc
